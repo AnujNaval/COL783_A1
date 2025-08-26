@@ -52,6 +52,92 @@ def order_points(pts):
     
     return rect
 
+def compute_homography(src_points, dst_points):
+    """
+    Compute homography matrix from source to destination points
+    """
+    # Create matrix A
+    A = []
+    for i in range(4):
+        x, y = src_points[i]
+        u, v = dst_points[i]
+        A.append([x, y, 1, 0, 0, 0, -u*x, -u*y])
+        A.append([0, 0, 0, x, y, 1, -v*x, -v*y])
+    
+    A = np.array(A)
+    
+    # Create vector b
+    b = dst_points.flatten()
+    
+    # Solve for homography parameters
+    h = np.linalg.lstsq(A, b, rcond=None)[0]
+    
+    # Reshape into 3x3 matrix
+    H = np.array([[h[0], h[1], h[2]],
+                  [h[3], h[4], h[5]],
+                  [h[6], h[7], 1]])
+    
+    return H
+
+def apply_homography(H, x, y):
+    """
+    Apply homography transformation to a point
+    """
+    point = np.array([x, y, 1])
+    transformed = H @ point
+    transformed /= transformed[2]  # Normalize by homogeneous coordinate
+    return transformed[0], transformed[1]
+
+def manual_warp_perspective(image, H, output_size, interpolation='nearest'):
+    """
+    Apply perspective transformation manually
+    """
+    h, w = output_size
+    warped = np.zeros((h, w), dtype=image.dtype)
+    
+    # Compute inverse homography for backward mapping
+    H_inv = np.linalg.inv(H)
+    
+    for y_out in range(h):
+        for x_out in range(w):
+            # Apply inverse homography to find source coordinates
+            x_src, y_src = apply_homography(H_inv, x_out, y_out)
+            
+            if interpolation == 'nearest':
+                # Nearest neighbor interpolation
+                x_nearest = int(round(x_src))
+                y_nearest = int(round(y_src))
+                
+                # Check if within source image bounds
+                if 0 <= x_nearest < image.shape[1] and 0 <= y_nearest < image.shape[0]:
+                    warped[y_out, x_out] = image[y_nearest, x_nearest]
+            
+            elif interpolation == 'bilinear':
+                # Bilinear interpolation
+                x_floor = int(np.floor(x_src))
+                y_floor = int(np.floor(y_src))
+                x_ceil = min(x_floor + 1, image.shape[1] - 1)
+                y_ceil = min(y_floor + 1, image.shape[0] - 1)
+                
+                # Check if within source image bounds
+                if 0 <= x_floor < image.shape[1] and 0 <= y_floor < image.shape[0]:
+                    # Calculate interpolation weights
+                    dx = x_src - x_floor
+                    dy = y_src - y_floor
+                    
+                    # Get the four neighboring pixels
+                    top_left = image[y_floor, x_floor]
+                    top_right = image[y_floor, x_ceil]
+                    bottom_left = image[y_ceil, x_floor]
+                    bottom_right = image[y_ceil, x_ceil]
+                    
+                    # Interpolate
+                    top = (1 - dx) * top_left + dx * top_right
+                    bottom = (1 - dx) * bottom_left + dx * bottom_right
+                    warped[y_out, x_out] = (1 - dy) * top + dy * bottom
+    
+    return warped
+
 def perspective_transform(image, pts):
     """
     Apply perspective transformation to get a top-down view
@@ -78,12 +164,12 @@ def perspective_transform(image, pts):
         [maxWidth - 1, maxHeight - 1],
         [0, maxHeight - 1]], dtype="float32")
     
-    # Compute the perspective transform matrix
-    M = cv2.getPerspectiveTransform(rect, dst)
+    # Compute the homography matrix
+    H = compute_homography(rect, dst)
     
     # Apply the transformation with different interpolation methods
-    warped_nearest = cv2.warpPerspective(image, M, (maxWidth, maxHeight), flags=cv2.INTER_NEAREST)
-    warped_linear = cv2.warpPerspective(image, M, (maxWidth, maxHeight), flags=cv2.INTER_LINEAR)
+    warped_nearest = manual_warp_perspective(image, H, (maxHeight, maxWidth), interpolation='nearest')
+    warped_linear = manual_warp_perspective(image, H, (maxHeight, maxWidth), interpolation='bilinear')
     
     return warped_nearest, warped_linear
 
