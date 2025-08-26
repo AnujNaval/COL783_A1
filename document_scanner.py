@@ -13,27 +13,33 @@ def select_points(image, num_points=4):
     def click_event(event, x, y, flags, params):
         nonlocal points, image_copy
         if event == cv2.EVENT_LBUTTONDOWN:
-            points.append((x, y))
-            # Make the point larger and more visible
-            cv2.circle(image_copy, (x, y), 12, (0, 255, 0), -1)  # Larger green circle
-            cv2.circle(image_copy, (x, y), 15, (0, 0, 255), 2)   # Red outline
-            cv2.putText(image_copy, str(len(points)), (x+20, y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)  # Larger white text
-            cv2.imshow("Select 4 Corners (Press 'q' when done)", image_copy)
+            if len(points) < num_points:
+                points.append((x, y))
+                # Make the point larger and more visible
+                cv2.circle(image_copy, (x, y), 12, (0, 255, 0), -1)  # Larger green circle
+                cv2.circle(image_copy, (x, y), 15, (0, 0, 255), 2)   # Red outline
+                cv2.putText(image_copy, str(len(points)), (x+20, y), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)  # Larger white text
+                cv2.imshow("Select 4 Corners (Press 'q' when done)", image_copy)
     
     cv2.imshow("Select 4 Corners (Press 'q' when done)", image_copy)
     cv2.setMouseCallback("Select 4 Corners (Press 'q' when done)", click_event)
     
     print("Click on the four corners of the document in order:")
     print("1. Top-left\n2. Top-right\n3. Bottom-right\n4. Bottom-left")
-    print("Press 'q' when you have selected all 4 points")
+    print("Press 'q' when you have selected all 4 points and are ready to process")
     
     while True:
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q') or len(points) >= num_points:
+        if key == ord('q'):
             break
     
     cv2.destroyAllWindows()
+    
+    # Check if we have enough points
+    if len(points) < num_points:
+        print(f"Warning: Only {len(points)} points selected. Need {num_points} points.")
+    
     return points[:num_points]
 
 def order_points(pts):
@@ -223,8 +229,14 @@ def display_comparison(original, points, warped_nearest, warped_linear):
 
 def save_results(original, points, warped_nearest, warped_linear):
     """
-    Save all results to files
+    Save all results to files in the scanned_images folder
     """
+    # Create the scanned_images directory if it doesn't exist
+    output_dir = "scanned_images"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created directory: {output_dir}")
+    
     # Draw points on original image (make them more visible)
     original_with_points = original.copy()
     for i, point in enumerate(points):
@@ -258,14 +270,14 @@ def save_results(original, points, warped_nearest, warped_linear):
     cv2.putText(zoom_linear, "Bilinear", (10, 30), 
                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     
-    # Save images
-    cv2.imwrite("original_with_points.jpg", original_with_points)
-    cv2.imwrite("warped_nearest.jpg", warped_nearest)
-    cv2.imwrite("warped_linear.jpg", warped_linear)
-    cv2.imwrite("zoom_center_nearest.jpg", zoom_nearest)
-    cv2.imwrite("zoom_center_linear.jpg", zoom_linear)
+    # Save images to the scanned_images folder
+    cv2.imwrite(os.path.join(output_dir, "original_with_points.jpg"), original_with_points)
+    cv2.imwrite(os.path.join(output_dir, "warped_nearest.jpg"), warped_nearest)
+    cv2.imwrite(os.path.join(output_dir, "warped_linear.jpg"), warped_linear)
+    cv2.imwrite(os.path.join(output_dir, "zoom_center_nearest.jpg"), zoom_nearest)
+    cv2.imwrite(os.path.join(output_dir, "zoom_center_linear.jpg"), zoom_linear)
     
-    print("Results saved as:")
+    print(f"Results saved in '{output_dir}' folder:")
     print("- original_with_points.jpg")
     print("- warped_nearest.jpg")
     print("- warped_linear.jpg")
@@ -274,11 +286,11 @@ def save_results(original, points, warped_nearest, warped_linear):
     
 def main():
     # Load the image
-    image_path = "document.jpg"  # Replace with your image path
+    image_path = "document_images/document.jpg"  # Replace with your image path
     
     if not os.path.exists(image_path):
         print(f"Error: Image file '{image_path}' not found!")
-        print("Please make sure your image is in the same folder and update the image_path variable.")
+        print("Please make sure your image is in the correct folder and update the image_path variable.")
         return
     
     image = cv2.imread(image_path)
@@ -299,6 +311,8 @@ def main():
     if len(points) != 4:
         print("Error: Exactly 4 points need to be selected")
         return
+    
+    print("Processing started... This may take a few moments.")
     
     # Apply perspective transformation with different interpolation methods
     warped_nearest, warped_linear = perspective_transform(intensity_image, points)
