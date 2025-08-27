@@ -17,12 +17,31 @@ def process_logo(logo_path, target_width):
         print(f"Error: Could not load logo from {logo_path}")
         return None, None, None
     
-    # Create a mask by thresholding (separate white background from logo)
-    gray_logo = cv2.cvtColor(logo, cv2.COLOR_BGR2GRAY)
-    _, mask = cv2.threshold(gray_logo, 200, 255, cv2.THRESH_BINARY_INV)
+    # Convert to grayscale manually using the standard formula: 0.299*R + 0.587*G + 0.114*B
+    height, width = logo.shape[:2]
+    gray_logo = np.zeros((height, width), dtype=np.uint8)
+    for y in range(height):
+        for x in range(width):
+            b = logo[y, x, 0]
+            g = logo[y, x, 1]
+            r = logo[y, x, 2]
+            gray_value = 0.299 * r + 0.587 * g + 0.114 * b
+            gray_logo[y, x] = int(gray_value)
+    
+    # Create mask manually (equivalent to THRESH_BINARY_INV)
+    # THRESH_BINARY_INV: 0 if pixel > threshold, max_value otherwise
+    mask = np.zeros((height, width), dtype=np.uint8)
+    threshold_value = 200
+    max_value = 255
+    
+    for y in range(height):
+        for x in range(width):
+            if gray_logo[y, x] > threshold_value:
+                mask[y, x] = 0  # White background becomes black in mask
+            else:
+                mask[y, x] = max_value  # Logo area becomes white in mask
     
     # Calculate new dimensions while maintaining aspect ratio
-    height, width = logo.shape[:2]
     aspect_ratio = height / width
     new_height = int(target_width * aspect_ratio)
     
